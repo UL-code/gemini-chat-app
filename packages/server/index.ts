@@ -6,6 +6,7 @@ import {
    HarmCategory,
    HarmBlockThreshold,
 } from '@google/generative-ai';
+import type { Content } from '@google/generative-ai';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -33,6 +34,69 @@ app.get('/api/hello', (req: Request, res: Response) => {
 // This Map will store the history of each conversation.
 // Key: conversationId (string), Value: History array (Content[])
 const chatHistories = new Map();
+
+// Define a threshold for when to summarize. Let's use 20 messages.
+const SUMMARY_THRESHOLD = 20;
+
+/**
+ * Checks if a conversation history is long enough to be summarized,
+ * and if so, generates and returns a new, summarized history.
+ * @param {Content[]} history The conversation history.
+ * @returns {Promise<Content[]>} The (potentially summarized) history.
+ */
+async function summarizeHistoryIfNeeded(
+   history: Content[]
+): Promise<Content[]> {
+   // 1. Check if the history has reached our trigger length.
+   if (history.length > SUMMARY_THRESHOLD) {
+      console.log(
+         `[Server] History length (${history.length}) exceeded threshold. Summarizing...`
+      );
+
+      try {
+         // 2. Create a dedicated model instance for the summarization task.
+         const summaryModel = genAI.getGenerativeModel({
+            model: 'gemini-2.5-pro',
+         });
+
+         // 3. Combine the history into a single string for the prompt.
+         const conversationText = history
+            .map(
+               (item) =>
+                  `${item.role}: ${item.parts.map((part) => part.text).join(' ')}`
+            )
+            .join('\n');
+
+         // 4. Create a specific prompt to instruct the model.
+         const summaryPrompt = `Please summarize the following conversation concisely. Capture the key points, user intent, and important information exchanged. This summary will be used as context for a continuing conversation.\n\n---\n\n${conversationText}`;
+
+         // 5. Make the dedicated AI call to generate the summary.
+         const result = await summaryModel.generateContent(summaryPrompt);
+         const summaryText = result.response.text();
+
+         console.log(`[Server] Generated summary: ${summaryText}`);
+
+         // 6. Return a new, compact history array containing only the summary.
+         // We frame it as a "user" message to provide context for the model.
+         return [
+            {
+               role: 'user',
+               parts: [
+                  {
+                     text: `This is a summary of our conversation so far: ${summaryText}`,
+                  },
+               ],
+            },
+         ];
+      } catch (error) {
+         console.error('[Server] Error during summarization:', error);
+         // If summarization fails, just return the original (but truncated) history.
+         return history.slice(-10);
+      }
+   }
+   // If the threshold isn't met, return the original history.
+   return history;
+}
 
 app.post('/api/chat', async (req: Request, res: Response) => {
    try {
@@ -74,14 +138,14 @@ app.post('/api/chat', async (req: Request, res: Response) => {
       });
 
       // 2. Retrieve the history for this conversationId, or start a new one
-      const history = chatHistories.get(conversationId) || [];
+      let history = chatHistories.get(conversationId) || [];
 
-      // Only take the last 10 items to keep the context relevant and token count low
-      const recentHistory = history.slice(-10);
+      //Call our new function to summarize if needed.
+      history = await summarizeHistoryIfNeeded(history);
 
       // 3. Start a new chat session with the model, providing the past history
       const chat = model.startChat({
-         history: recentHistory,
+         history: history, // Use the potentially summarized history
       });
 
       // 4. Send the user's new prompt to the chat session
