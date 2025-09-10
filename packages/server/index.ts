@@ -7,6 +7,7 @@ import {
    HarmBlockThreshold,
 } from '@google/generative-ai';
 import type { Content } from '@google/generative-ai';
+import z from 'zod';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -98,7 +99,23 @@ async function summarizeHistoryIfNeeded(
    return history;
 }
 
+const chatSchema = z.object({
+   prompt: z
+      .string()
+      .trim()
+      .min(1, 'Prompt cannot be empty')
+      .max(3500, 'Prompt is too long(max 3500 characters)'),
+
+   conversationId: z.string().uuid(),
+});
+
 app.post('/api/chat', async (req: Request, res: Response) => {
+   const validation = chatSchema.safeParse(req.body);
+   if (!validation.success) {
+      res.status(400).json(validation.error.format());
+      return;
+   }
+
    try {
       // 1. Get the prompt AND a conversationId from the client
       const { prompt, conversationId } = req.body;
