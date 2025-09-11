@@ -8,6 +8,7 @@ import {
 } from '@google/generative-ai';
 import type { Content } from '@google/generative-ai';
 import z from 'zod';
+import { chatRepository } from './repositories/chat.repository';
 
 // Load environment variables from .env file
 dotenv.config();
@@ -31,10 +32,6 @@ app.get('/', (req: Request, res: Response) => {
 app.get('/api/hello', (req: Request, res: Response) => {
    res.json({ message: 'Hello from the API!' });
 });
-
-// This Map will store the history of each conversation.
-// Key: conversationId (string), Value: History array (Content[])
-const chatHistories = new Map();
 
 // Define a threshold for when to summarize. Let's use 20 messages.
 const SUMMARY_THRESHOLD = 20;
@@ -99,6 +96,7 @@ async function summarizeHistoryIfNeeded(
    return history;
 }
 
+// Define the schema for input validation using zod
 const chatSchema = z.object({
    prompt: z
       .string()
@@ -110,6 +108,7 @@ const chatSchema = z.object({
 });
 
 app.post('/api/chat', async (req: Request, res: Response) => {
+   // Validate the incoming request body
    const validation = chatSchema.safeParse(req.body);
    if (!validation.success) {
       res.status(400).json(validation.error.format());
@@ -119,13 +118,6 @@ app.post('/api/chat', async (req: Request, res: Response) => {
    try {
       // 1. Get the prompt AND a conversationId from the client
       const { prompt, conversationId } = req.body;
-
-      if (!prompt || !conversationId) {
-         return res
-            .status(400)
-            .json({ error: 'A "prompt" and "conversationId" are required.' });
-      }
-
       const model = genAI.getGenerativeModel({
          model: 'gemini-2.5-flash',
          systemInstruction:
@@ -155,7 +147,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
       });
 
       // 2. Retrieve the history for this conversationId, or start a new one
-      let history = chatHistories.get(conversationId) || [];
+      let history = chatRepository.getHistory(conversationId) || [];
 
       //Call our new function to summarize if needed.
       history = await summarizeHistoryIfNeeded(history);
@@ -172,7 +164,7 @@ app.post('/api/chat', async (req: Request, res: Response) => {
 
       // 5. Save the updated history back to our Map
       const updatedHistory = await chat.getHistory();
-      chatHistories.set(conversationId, updatedHistory);
+      chatRepository.setHistory(conversationId, updatedHistory);
 
       res.json({ prompt: text });
    } catch (error) {
