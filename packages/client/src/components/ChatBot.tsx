@@ -22,26 +22,37 @@ type Message = {
 const ChatBot = () => {
    const [messages, setMessages] = useState<Message[]>([]);
    const [isBotTyping, setIsBotTyping] = useState(false);
-   const formRef = useRef<HTMLFormElement | null>(null);
+   const [error, setError] = useState<string | null>(null);
+   const lastMessageRef = useRef<HTMLDivElement | null>(null);
    const conversationId = useRef(crypto.randomUUID());
    const { register, handleSubmit, reset, formState } = useForm<FormData>();
 
    useEffect(() => {
-      formRef.current?.scrollIntoView({ behavior: 'smooth' });
+      lastMessageRef.current?.scrollIntoView({ behavior: 'smooth' });
    }, [messages]);
 
    const onSubmit = async ({ prompt }: FormData) => {
-      setMessages((prev) => [...prev, { content: prompt, role: 'user' }]);
-      setIsBotTyping(true);
+      try {
+         setMessages((prev) => [...prev, { content: prompt, role: 'user' }]);
+         setIsBotTyping(true);
+         setError('');
 
-      reset();
-      const { data } = await axios.post<ChatResponse>('/api/chat', {
-         prompt,
-         conversationId: conversationId.current,
-      });
-      setMessages((prev) => [...prev, { content: data.prompt, role: 'bot' }]);
-      setIsBotTyping(false);
-      console.log(data);
+         reset({ prompt: '' });
+         const { data } = await axios.post<ChatResponse>('/api/chat', {
+            prompt,
+            conversationId: conversationId.current,
+         });
+         setMessages((prev) => [
+            ...prev,
+            { content: data.prompt, role: 'bot' },
+         ]);
+         console.log(data);
+      } catch (error) {
+         console.error(error);
+         setError('Something went wrong. Please try again.');
+      } finally {
+         setIsBotTyping(false);
+      }
    };
 
    const onKeyDown = (e: React.KeyboardEvent<HTMLFormElement>) => {
@@ -51,12 +62,22 @@ const ChatBot = () => {
       }
    };
 
+   const onCopyMessage = (e: React.ClipboardEvent) => {
+      const selection = window.getSelection()?.toString();
+      if (selection) {
+         e.preventDefault();
+         e.clipboardData.setData('text/plain', selection);
+      }
+   };
+
    return (
-      <div>
-         <div className="flex flex-col gap-3 mb-10">
+      <div className="flex flex-col h-full">
+         <div className="flex flex-col flex-1 gap-3 mb-10 overflow-y-auto">
             {messages.map((message, index) => (
-               <p
+               <div
                   key={index}
+                  onCopy={onCopyMessage}
+                  ref={index === messages.length - 1 ? lastMessageRef : null}
                   className={`px-3 py-2 rounded-xl ${
                      message.role === 'user'
                         ? 'bg-blue-600 text-white self-end me-3'
@@ -64,7 +85,7 @@ const ChatBot = () => {
                   }`}
                >
                   <ReactMarkdown>{message.content}</ReactMarkdown>
-               </p>
+               </div>
             ))}
             {isBotTyping && (
                <div className="flex self-start gap-1 px-3 py-3 bg-gray-200 rounded-xl ms-2">
@@ -73,11 +94,11 @@ const ChatBot = () => {
                   <div className="w-2 h-2 rounded-full bg-gray-800 animate-pulse [animation-delay:0.4s]"></div>
                </div>
             )}
+            {error && <p className="text-red-500">{error}</p>}
          </div>
          <form
             onSubmit={handleSubmit(onSubmit)}
             onKeyDown={onKeyDown}
-            ref={formRef}
             className="flex flex-col gap-2 items-end border-2 p-4 rounded-3xl m-3"
          >
             <textarea
@@ -85,6 +106,7 @@ const ChatBot = () => {
                   required: true,
                   validate: (data) => data.trim().length > 0,
                })}
+               autoFocus
                className="w-full border-0 focus:outline-0 resize-none"
                placeholder="Ask me anything..."
                maxLength={3500}
