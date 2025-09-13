@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import {
    GoogleGenerativeAI,
    HarmCategory,
@@ -5,11 +7,18 @@ import {
 } from '@google/generative-ai';
 import type { Content } from '@google/generative-ai';
 import { chatRepository } from '../repositories/chat.repository';
+import template from '../prompts/chatbot.txt';
 
 if (!process.env.GEMINI_API_KEY) {
    throw new Error('GEMINI_API_KEY is not defined in environment variables');
 }
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+const storeInfo = fs.readFileSync(
+   path.join(__dirname, '../prompts/store-info.md'),
+   'utf-8'
+);
+const systemInstruction = template.replace('{{storeInfo}}', storeInfo);
 
 // Define a threshold for when to summarize. Let's use 20 messages.
 const SUMMARY_THRESHOLD = 20;
@@ -62,8 +71,7 @@ export const chatService = {
    async sendMessage(prompt: string, conversationId: string): Promise<string> {
       const model = genAI.getGenerativeModel({
          model: 'gemini-2.5-flash',
-         systemInstruction:
-            'You are a friendly and helpful chatbot. Your goal is to be concise. Keep all answers under 750 tokens to ensure they are complete.',
+         systemInstruction,
          safetySettings: [
             {
                category: HarmCategory.HARM_CATEGORY_HARASSMENT,
