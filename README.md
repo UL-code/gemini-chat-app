@@ -111,7 +111,7 @@ You can provide custom instructions to the chatbot by editing the `chatbot.txt` 
 
 **File:** `packages/server/prompts/chatbot.txt`
 
-### Changing the System Information
+### Changing the Store Information
 
 The `store-info.md` file contains the system information that is injected into the `chatbot.txt` prompt. You can edit this file to provide the chatbot with specific knowledge about your store or business.
 
@@ -119,16 +119,10 @@ The `store-info.md` file contains the system information that is injected into t
 
 ## Running the Project
 
-To run the project, you will need to open two separate terminals.
 
-**In the first terminal, start the server:**
-
-```bash
-bun run --filter server dev
-```
-
-**In the second terminal, start the client:**
+**In the root directory type:**
 
 ```bash
-bun run --filter client dev
+bun run dev
 ```
+
